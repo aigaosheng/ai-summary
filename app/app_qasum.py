@@ -21,11 +21,12 @@ import json
 from langchain.chains.summarize import load_summarize_chain
 from langchain_community.retrievers import BM25Retriever, TFIDFRetriever
 import time
+from langchain_community.document_loaders import WebBaseLoader
 
-summary_enable = False
+# summary_enable = True
 
 #Title
-st.set_page_config(page_title=" Jack of All Trades - 百晓通")
+st.set_page_config(page_title=" Jack of All Trades - 百事通")
 
 from module import llm, pdf_processor
 
@@ -60,41 +61,38 @@ sys_img_file = "./resource/logo.jpeg"
 
 with st.sidebar:
     st.image(sys_img_file, caption = "Chat with Your Document")
-    st.markdown('Answer what you know froom provided document')
+    st.markdown('Answer what you know from provided document')
 
+summary_enable = st.checkbox("Enable summary", value=False)
+print(f"*** summary_enable = {summary_enable}")
+
+doc_source = st.selectbox("Select document source", ["url", "pdf"])
 #
-doc_file = st.file_uploader(
-    label = "Chat with PDF Upload", 
-    type = ["pdf"], 
-    accept_multiple_files = False, 
-    help = "upload pdf for summary & ask me anything in the document", 
-    disabled = False
-)
-
-from langchain_community.document_loaders import WebBaseLoader
-doc_file = WebBaseLoader("https://www.straitstimes.com/singapore/health/medishield-life-to-start-on-nov-1")
-doc_content = doc_file.load()
-# data[0].page_content
-
-if doc_file:
-    # doc_content = pdf_processor.load_pdf(doc_file)
-    # print(f"***111** doc_content = {llm_chat_model} {doc_content}")
-    if True:#summary_enable:
-        with st.container():
-            with st.spinner("Working on generating summary ..."):        
-                output_summ = summ_stuff_chain.run(doc_content[:3])
-                st.write("SUMMARY: \n" + output_summ)
-
-    #Q1
-    db_index = index_builder(doc_content, is_vectordb = False)
-    qa_stuff_chain = load_qa_chain(llm_chat_model, chain_type="stuff", prompt = llm.qa_prompt_template)
-    # question = "what is revenue growth rate?" 
-    # context_str = db_index.get_relevant_documents(question)#, k=50, fetch_k=100)
-    # stuff_answer = qa_stuff_chain(
-    #     {"input_documents": context_str, "question": question}, return_only_outputs=True
-    # )
-    # st.write(stuff_answer["output_text"])
-
+if doc_source == "pdf":
+    doc_file = st.file_uploader(
+        label = "Chat with PDF Upload", 
+        type = ["pdf"], 
+        accept_multiple_files = False, 
+        help = "upload pdf for summary & ask me anything in the document", 
+        disabled = False
+    )
+    if doc_file:
+        try:
+            doc_content = pdf_processor.load_pdf(doc_file)
+            max_page_limit = 2
+            doc_content = doc_content[:max_page_limit]
+        except:
+            print(f"*** Failed loading {doc_file}")
+            doc_content = None
+elif doc_source == "url":
+    doc_url = st.text_input("Document URL: ")
+    try:
+        doc_content = WebBaseLoader(doc_url).load()
+    except:
+        print(f"*** Failed loading {doc_url}")
+        doc_content = None
+else:
+    doc_content = None
 
 if "messages" not in st.session_state.keys():
     st.session_state.messages = [
@@ -128,6 +126,29 @@ if "wav_counter" not in  st.session_state:
 else:
     st.session_state["wav_counter"] += 1
 
+if doc_content:
+    # doc_content = pdf_processor.load_pdf(doc_file)
+    # print(f"***111** doc_content = {llm_chat_model} {doc_content}")
+    if summary_enable:
+        with st.container():
+            with st.spinner("Working on generating summary ..."):        
+                output_summ = summ_stuff_chain.run(doc_content)
+                # st.write("SUMMARY: \n" + output_summ)
+                st.write(":orange[" + str(datetime.now().strftime("%H:%M:%S")) + "]" + "\tSUMMARY: " + output_summ)
+                message = {
+                    "role": "assistant", 
+                    "content": "Write summary about the document.", 
+                    "dt": datetime.now().strftime("%H:%M:%S"),
+                    "avatar": sys_img_file,
+                    "feedback": output_summ,
+                }
+                st.session_state.messages.append(message)
+
+    #Q1
+    db_index = index_builder(doc_content, is_vectordb = False)
+    qa_stuff_chain = load_qa_chain(llm_chat_model, chain_type="stuff", prompt = llm.qa_prompt_template)
+
+
 # User-provided prompt
 if prompt := st.chat_input():
     st.session_state.messages.append(
@@ -155,7 +176,10 @@ if st.session_state.messages[-1]["role"] != "assistant":
                     st_tm = time.time()
                     
                     prompt = prompt.lower()
-                    context_str = db_index.get_relevant_documents(prompt)#, k=50, fetch_k=100)
+                    if doc_source == "url":
+                        context_str = doc_content
+                    else:
+                        context_str = db_index.get_relevant_documents(prompt)#, k=50, fetch_k=100)
                     stuff_answer = qa_stuff_chain(
                         {
                             "input_documents": context_str, 
