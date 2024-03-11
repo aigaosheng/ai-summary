@@ -24,7 +24,7 @@ import time
 from langchain_community.document_loaders import WebBaseLoader
 
 # summary_enable = True
-
+# https://www.straitstimes.com/life/entertainment/bye-taylor-swift-show-over-but-singapore-will-keep-looking-at-you
 #Title
 st.set_page_config(page_title=" Jack of All Trades - 百事通")
 
